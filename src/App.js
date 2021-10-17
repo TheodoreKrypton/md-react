@@ -7,13 +7,12 @@ marked.use({
   renderer: {
     paragraph(content) {
       return content;
+    },
+    text(text) {
+      return `<span data-begin="${text.begin}">${text}</span>`
     }
-  }
-})
-
-const render = (s) => {
-  return marked.parse(s);
-}
+  },
+});
 
 const autoId = (() => {
   let i = 0;
@@ -23,6 +22,41 @@ const autoId = (() => {
   }
 })();
 
+const Rendered = (props) => {
+  const { source } = props;
+
+  const ref = React.useRef(null);
+
+  const render = React.useCallback((source) => {
+    let cursor = 0;
+    const walk = (token) => {
+      if (token.type === 'text') {
+        // eslint-disable-next-line no-new-wrappers
+        token.text = new String(token.text);
+        token.text.begin = cursor;
+        cursor += token.text.length;
+      } else {
+        cursor += token.raw.length - token.text.length;
+        token.tokens.forEach(walk);
+      }
+    }
+    const tokens = marked.lexer(source);
+    tokens.forEach(walk);
+    const html = marked.parser(tokens);
+    return html;
+  }, []);
+
+  React.useEffect(() => {
+    if (source) {
+      ref.current.innerHTML = render(source);
+    } else {
+      ref.current.innerHTML = "<br/>"
+    }
+  }, [render, source]);
+
+  return <div ref={ref}></div>
+}
+
 const Block = (props) => {
   const [source, setSource] = React.useState(props.source);
   const [rendered, setRendered] = React.useState('');
@@ -31,8 +65,22 @@ const Block = (props) => {
 
   const onClick = React.useCallback((ev) => {
     ev.stopPropagation();
-    props.setFocusedBlock({ block: props.getBlockInfo(props.id).block });
-  }, [props]);
+    if (!editing) {
+      const selection = window.getSelection();
+      const node = selection.focusNode.parentNode;
+      const begin = parseInt(node.getAttribute('data-begin')) - 1;
+      const renderedOffset = selection.focusOffset;
+      const renderedText = node.textContent;
+      let i = begin;
+      for (let j = 0; j < renderedOffset; j++) {
+        console.log(source[i], renderedText[j])
+        while (source[i] !== renderedText[j]) {
+          i++;
+        }
+      }
+      props.setFocusedBlock({ block: props.getBlockInfo(props.id).block, cursor: i + 1 });
+    }
+  }, [editing, props, source]);
 
   const onChange = React.useCallback((ev) => {
     props.getBlockInfo(props.id).source = ev.target.value;
@@ -46,6 +94,7 @@ const Block = (props) => {
 
   const self = React.useRef(null);
   const textAreaRef = React.useRef(null);
+  const renderedRef = React.useRef(null);
 
   const onKeyDown = React.useCallback((ev) => {
     if (ev.keyCode === 8 && textAreaRef.current.selectionStart === 0) { // backspace
@@ -60,8 +109,10 @@ const Block = (props) => {
   }, [props]);
 
   React.useEffect(() => {
-    setRendered(render(source));
-  }, [source]);
+    if (editing === false) {
+      setRendered(<Rendered source={source} />)
+    }
+  }, [editing, source]);
 
   React.useEffect(() => {
     self.current.addEventListener('edit', ({ detail: { cursor } }) => {
@@ -102,11 +153,12 @@ const Block = (props) => {
               autoFocus
             />
           </td> : <td
+            ref={renderedRef}
             className="rendered"
             style={{ display: editing ? 'none' : 'table-cell' }}
-            dangerouslySetInnerHTML={{ __html: rendered.length ? rendered : '<br>' }}
             onClick={onClick}
           >
+            {rendered}
           </td>
       }
     </tr >
@@ -191,7 +243,7 @@ const Markdown = () => {
   }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
 
   React.useEffect(() => {
-    const block = makeNewBlock({ source: 'type here' });
+    const block = makeNewBlock({ source: '# type here *here* here' });
     setFocusedBlock({ block });
     setBlocks([block]);
   }, [makeNewBlock]);
