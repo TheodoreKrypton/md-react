@@ -10,6 +10,9 @@ marked.use({
     },
     text(text) {
       return `<span data-begin="${text.begin}">${text}</span>`
+    },
+    codespan(text) {
+      return `<code data-begin="${text.begin}">${text}</code>`
     }
   },
 });
@@ -28,20 +31,26 @@ const Rendered = (props) => {
   const ref = React.useRef(null);
 
   const render = React.useCallback((source) => {
-    let cursor = 0;
-    const walk = (token) => {
-      if (token.type === 'text') {
-        // eslint-disable-next-line no-new-wrappers
-        token.text = new String(token.text);
-        token.text.begin = cursor;
-        cursor += token.text.length;
-      } else {
-        cursor += token.raw.length - token.text.length;
-        token.tokens.forEach(walk);
+    const walk = (tokens, begin) => {
+      let offset = 0;
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        if (token.type === 'list') {
+          walk(token.items, begin + offset);
+        } else {
+          if (token.tokens && token.tokens.length > 0) {
+            walk(token.tokens, begin + offset);
+          } else {
+            // eslint-disable-next-line no-new-wrappers
+            token.text = new String(token.text);
+            token.text.begin = begin + offset;
+          }
+          offset += token.raw.length;
+        }
       }
     }
     const tokens = marked.lexer(source);
-    tokens.forEach(walk);
+    walk(tokens, 0);
     const html = marked.parser(tokens);
     return html;
   }, []);
@@ -73,7 +82,6 @@ const Block = (props) => {
       const renderedText = node.textContent;
       let i = begin;
       for (let j = 0; j < renderedOffset; j++) {
-        console.log(source[i], renderedText[j])
         while (source[i] !== renderedText[j]) {
           i++;
         }
@@ -243,7 +251,7 @@ const Markdown = () => {
   }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
 
   React.useEffect(() => {
-    const block = makeNewBlock({ source: '# type here *here* here' });
+    const block = makeNewBlock({ source: '* fuck `test`' });
     setFocusedBlock({ block });
     setBlocks([block]);
   }, [makeNewBlock]);
