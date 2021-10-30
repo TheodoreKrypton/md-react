@@ -2,6 +2,10 @@ import React from 'react';
 import './App.css';
 import marked from 'marked';
 
+function getBegin(text) {
+  return text.begin ? text.begin : 0;
+}
+
 marked.use({
   'gfm': true,
   renderer: {
@@ -9,10 +13,13 @@ marked.use({
       return content;
     },
     text(text) {
-      return `<span data-begin="${text.begin}">${text}</span>`
+      return `<span data-begin=${getBegin(text)}>${text}</span>`
+    },
+    code(text) {
+      return `<code data-begin=${getBegin(text)}>${text}</code>`
     },
     codespan(text) {
-      return `<code data-begin="${text.begin}">${text}</code>`
+      return `<code data-begin=${getBegin(text)}>${text}</code>`
     }
   },
 });
@@ -24,6 +31,10 @@ const autoId = (() => {
     return i;
   }
 })();
+
+function insert(str, index, value) {
+  return str.slice(0, index) + value + str.slice(index);
+}
 
 const Rendered = (props) => {
   const { source } = props;
@@ -69,7 +80,7 @@ const Rendered = (props) => {
 const Block = (props) => {
   const [source, setSource] = React.useState(props.source);
   const [rendered, setRendered] = React.useState('');
-  const [editing, setEditing] = React.useState(props.editing === true);
+  const [editing, setEditing] = React.useState(false);
   const cursorPos = React.useRef(undefined);
 
   const onClick = React.useCallback((ev) => {
@@ -92,8 +103,11 @@ const Block = (props) => {
 
   const onChange = React.useCallback((ev) => {
     props.getBlockInfo(props.id).source = ev.target.value;
-    props.breakLines(props.id);
-    setSource(ev.target.value);
+    if (ev.target.value.indexOf('\n') !== -1) {
+      props.breakLines(props.id);
+    } else {
+      setSource(ev.target.value);
+    }
   }, [props]);
 
   const onBlur = React.useCallback(() => {
@@ -104,17 +118,28 @@ const Block = (props) => {
   const textAreaRef = React.useRef(null);
   const renderedRef = React.useRef(null);
 
+  const moveCursor = React.useCallback((pos) => {
+    textAreaRef.current.setSelectionRange(pos, pos);
+  }, []);
+
   const onKeyDown = React.useCallback((ev) => {
-    if (ev.keyCode === 8 && textAreaRef.current.selectionStart === 0) { // backspace
+    const ta = textAreaRef.current;
+    const { selectionStart } = ta;
+
+    if (ev.keyCode === 8 && selectionStart === 0 && ta.value.length === 0) { // backspace
       props.mergeBlocks(props.id);
+    } else if (ev.keyCode === 9) { // tab
+      ev.preventDefault();
+      ta.value = insert(ta.value, selectionStart, '\t');
+      moveCursor(selectionStart + 1);
     } else if (ev.keyCode === 38) {
       ev.preventDefault();
-      props.dispatchEvent('moveup', { id: props.id, cursor: textAreaRef.current.selectionStart });
+      props.dispatchEvent('moveup', { id: props.id, cursor: selectionStart });
     } else if (ev.keyCode === 40) {
       ev.preventDefault();
-      props.dispatchEvent('movedown', { id: props.id, cursor: textAreaRef.current.selectionStart });
+      props.dispatchEvent('movedown', { id: props.id, cursor: selectionStart });
     }
-  }, [props]);
+  }, [props, moveCursor]);
 
   React.useEffect(() => {
     if (editing === false) {
@@ -129,10 +154,6 @@ const Block = (props) => {
     });
     props.registerRef(self);
   }, [props]);
-
-  const moveCursor = React.useCallback((pos) => {
-    textAreaRef.current.setSelectionRange(pos, pos)
-  }, []);
 
   React.useEffect(() => {
     if (editing === true && cursorPos.current !== null) {
@@ -233,8 +254,7 @@ const Markdown = () => {
 
   const breakLines = React.useCallback((id) => {
     const newLines = getBlockInfo(id).source.split('\n');
-    if (newLines.length > 1) {
-      const newBlocks = newLines.map((line) => makeNewBlock({ source: line }));
+    const newBlocks = newLines.map((line) => makeNewBlock({ source: line }));
       setBlocks((blocks) => {
         let res = [];
         for (let i = 0; i < blocks.length; i++) {
@@ -246,8 +266,7 @@ const Markdown = () => {
         }
         return res;
       });
-      setFocusedBlock({ block: newBlocks[newBlocks.length - 1], cursor: 0 });
-    }
+    setFocusedBlock({ block: newBlocks[newBlocks.length - 1], cursor: 0 });
   }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
 
   React.useEffect(() => {
