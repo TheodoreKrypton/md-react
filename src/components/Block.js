@@ -13,23 +13,51 @@ const Block = (props) => {
 
   const cursorPos = React.useRef(undefined);
 
+  const locateCursor = React.useCallback((isBegin) => {
+    const selection = window.getSelection();
+    const node = isBegin ? selection.anchorNode : selection.focusNode;
+    if (!node) {
+      return null;
+    }
+    const { parentNode } = node;
+    const begin = parseInt(parentNode.getAttribute('data-begin'));
+    if (isNaN(begin)) {
+      return null;
+    }
+    const renderedOffset = isBegin ? selection.anchorOffset : selection.focusOffset;
+    const renderedText = parentNode.textContent;
+    let i = begin;
+    for (let j = 0; j < renderedOffset; j++) {
+      while (i <= source.length - 1 && source[i] !== renderedText[j]) {
+        i++;
+      }
+    }
+    return i + 1;
+  }, [source]);
+
   const onClick = React.useCallback((ev) => {
     ev.stopPropagation();
-    if (!editing) {
-      const selection = window.getSelection();
-      const node = selection.focusNode.parentNode;
-      const begin = parseInt(node.getAttribute('data-begin')) - 1;
-      const renderedOffset = selection.focusOffset;
-      const renderedText = node.textContent;
-      let i = begin;
-      for (let j = 0; j < renderedOffset; j++) {
-        while (source[i] !== renderedText[j]) {
-          i++;
-        }
-      }
-      props.setFocusedBlock({ block: props.getBlockInfo(props.id).block, cursor: i + 1 });
+    const cursor = locateCursor(false);
+    if (cursor !== null) {
+      props.setFocusedBlock({ block: props.getBlockInfo(props.id).block, cursor });
     }
-  }, [editing, props, source]);
+  }, [locateCursor, props]);
+
+  const onMouseDown = React.useCallback((ev) => {
+    ev.stopPropagation();
+    const cursor = locateCursor(false);
+    if (cursor !== null) {
+      props.dispatchEvent('selectionBegin', { id: props.id, cursor });
+    }
+  }, [locateCursor, props]);
+
+  const onMouseUp = React.useCallback((ev) => {
+    ev.stopPropagation();
+    const cursor = locateCursor(false);
+    if (cursor !== null) {
+      props.dispatchEvent('selectionEnd', { id: props.id, cursor });
+    }
+  }, [locateCursor, props]);
 
   const onChange = React.useCallback((ev) => {
     props.getBlockInfo(props.id).source = ev.target.value;
@@ -103,19 +131,20 @@ const Block = (props) => {
           <td>
             <textarea
               ref={textAreaRef}
-              style={{ display: editing ? 'table-cell' : 'none' }}
+              style={{ display: 'table-cell' }}
               value={source}
               onChange={onChange}
               onKeyDown={onKeyDown}
-              onClick={onClick}
               rows={lines === null ? 1 : lines}
               autoFocus
             />
           </td> : <td
             ref={renderedRef}
             className="rendered"
-            style={{ display: editing ? 'none' : 'table-cell' }}
+            style={{ display: 'table-cell' }}
             onClick={onClick}
+            onMouseDown={onMouseDown}
+            onMouseUp={onMouseUp}
           >
             {rendered}
           </td>

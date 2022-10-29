@@ -1,67 +1,157 @@
 import React from 'react';
-import marked from 'marked';
+import parse from '../parser'
 
-function getBegin(text) {
-  return text.begin ? text.begin : 0;
+import './rendered.css';
+
+const Editable = (props) => {
+  const { children, onChange } = props;
+
+  React.useEffect(() => {
+    if (children.length !== undefined) {
+      throw new Error('Editable can only have one child');
+    }
+  }, [children]);
+
+  const [text, setText] = React.useState(children.props.children);
+
+  const onInput = React.useCallback((e) => {
+    const newText = e.currentTarget.textContent;
+    onChange(newText);
+
+    const analyzed = parse(newText);
+    if (analyzed.length === 0) {
+      setText("");
+
+      return;
+    }
+
+    if (analyzed.length > 1) {
+      throw new Error('unexpected two lines')
+    }
+    const tokens = analyzed[0].tokens
+
+    if (tokens.length === 1) {
+      setText(newText);
+      return;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const element = React.useMemo(() => {
+    return React.createElement(children.type, {
+      contentEditable: true,
+      onInput: onInput,
+      dangerouslySetInnerHTML: {
+        __html: text
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [children.type, onInput]);
+
+  return element;
 }
 
-marked.use({
-  'gfm': true,
-  renderer: {
-    paragraph(content) {
-      return content;
-    },
-    text(text) {
-      return `<span data-begin=${getBegin(text)}>${text}</span>`
-    },
-    code(text) {
-      return `<code data-begin=${getBegin(text)}>${text}</code>`
-    },
-    codespan(text) {
-      return `<code data-begin=${getBegin(text)}>${text}</code>`
+const Empty = () => {
+  return <br />
+}
+
+const Node = (props) => {
+  const { model, rerender } = props;
+
+  const [view, setView] = React.useState(null);
+
+  const onChange = React.useCallback((newText) => {
+    model.text = newText;
+    if (newText === "") {
+      rerender();
     }
-  },
-});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    if (model.type === 'text') {
+      setView(<Editable onChange={onChange}><span>{model.text}</span></Editable>)
+    } else if (model.type === 'codespan') {
+      setView(<Editable onChange={onChange}><code>{model.text}</code></Editable>)
+    } else {
+      const children = model.children.map((child, i) => <Node model={child} key={i} rerender={rerender} />);
+      if (model.type === 'heading') {
+        setView(<h1>{children}</h1>)
+      } else if (model.type === 'list_item') {
+        setView(<li>{children}</li>)
+      } else {
+        setView(<>{children}</>)
+      }
+    }
+  }, [model, onChange, rerender]);
+
+  return <>{view}</>
+}
+
+const constructTree = (source) => {
+  const items = parse(source);
+
+  const createNode = (item) => {
+    const node = new NodeModel();
+    node.type = item.type
+    if (item.tokens) {
+      node.children = item.tokens.map(createNode);
+    } else if (item.type === "list") {
+      node.children = item.items.map(createNode);
+    } else {
+      node.text = item.text;
+    }
+    return node;
+  }
+
+  const root = new NodeModel();
+  root.children = items.map(createNode);
+  return root;
+}
+
+class NodeModel {
+  constructor() {
+    this.type = ""
+    this.text = "";
+    this.children = [];
+  }
+
+  source() {
+    const text = this.children.length > 0 ? this.children.map((child) => child.source()).join('') : this.text;
+    if (text === "") {
+      return "";
+    }
+    if (this.type === 'text' || this.type === '') {
+      return text;
+    } else if (this.type === 'codespan') {
+      return `\`${text}\``
+    } else if (this.type === 'heading') {
+      return `# ${text}`
+    } else {
+      return "error"
+    }
+  }
+}
 
 const Rendered = (props) => {
   const { source } = props;
 
-  const ref = React.useRef(null);
+  const [model, setModel] = React.useState(source ? constructTree(source) : null);
+  const [view, setView] = React.useState(null);
 
-  const render = React.useCallback((source) => {
-    const walk = (tokens, begin) => {
-      let offset = 0;
-      for (let i = 0; i < tokens.length; i++) {
-        const token = tokens[i];
-        if (token.type === 'list') {
-          walk(token.items, begin + offset);
-        } else {
-          if (token.tokens && token.tokens.length > 0) {
-            walk(token.tokens, begin + offset);
-          } else {
-            // eslint-disable-next-line no-new-wrappers
-            token.text = new String(token.text);
-            token.text.begin = begin + offset;
-          }
-          offset += token.raw.length;
-        }
-      }
-    }
-    const tokens = marked.lexer(source);
-    walk(tokens, 0);
-    const html = marked.parser(tokens);
-    return html;
-  }, []);
+  const rerender = React.useCallback(() => {
+    setModel(constructTree(model.source()));
+  }, [model]);
 
   React.useEffect(() => {
-    if (source) {
-      ref.current.innerHTML = render(source);
+    if (model) {
+      setView(<Node model={model} rerender={rerender} />);
     } else {
-      ref.current.innerHTML = "<br/>"
+      setView(<Empty />);
     }
-  }, [render, source]);
+  }, [model, rerender]);
 
-  return <div ref={ref}></div>
+  return <>{view}</>
 }
 
 export default Rendered;

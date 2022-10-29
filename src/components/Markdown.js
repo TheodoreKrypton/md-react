@@ -78,7 +78,7 @@ const Markdown = () => {
   }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
 
   React.useEffect(() => {
-    const block = makeNewBlock({ source: '* fuck `test`' });
+    const block = makeNewBlock({ source: '' });
     setFocusedBlock({ block });
     setBlocks([block]);
   }, [makeNewBlock]);
@@ -91,8 +91,15 @@ const Markdown = () => {
     block.ref.current.dispatchEvent(new CustomEvent('edit', { detail: { cursor: cursor === undefined ? getBlockInfo(block.id).source.length : cursor } }));
   }, [focusedBlock, getBlockInfo])
 
-  const onClick = React.useCallback(() => {
+  /*
+    Click on the empty area of the editor to create a new block when the last block is not empty.
+  */
+  const onClick = React.useCallback((ev) => {
+    if (ev.target !== ev.currentTarget) {
+      return;
+    }
     setBlocks(blocks => {
+      // If the last block is empty, focus on it.
       if (blocks.length > 0 && getBlockInfo(blocks[blocks.length - 1].id).source.length === 0) {
         setFocusedBlock({ block: blocks[blocks.length - 1] });
         return blocks;
@@ -127,14 +134,45 @@ const Markdown = () => {
         }
       }
     });
+    editor.current.addEventListener('selectionBegin', ({ detail: { id, cursor } }) => {
+      selectionBegin.current = { id, cursor };
+    })
+    editor.current.addEventListener('selectionEnd', ({ detail: { id, cursor } }) => {
+      const begin = selectionBegin.current;
+
+      if (begin === null) {
+        return;
+      }
+      const end = { id, cursor };
+
+      (() => {
+        for (let i = 0; i < blocks.length; i++) {
+          if (blocks[i].id === begin.id) {
+            for (let j = i + 1; j < blocks.length; j++) {
+              if (blocks[j].id === end.id) {
+                return;
+              }
+            }
+            return;
+          }
+        }
+      })();
+
+      selectionBegin.current = null;
+    });
+
+    editor.current.addEventListener('click', onClick);
   }, [blocks, getBlockInfo, onClick, setFocusedBlock]);
+
+
 
   const editor = React.useRef(null);
   const wordyArea = React.useRef(null);
+  const selectionBegin = React.useRef(null);
 
   return (
     <>
-      <div ref={editor} onClick={onClick} style={{ height: height }}>
+      <div ref={editor} style={{ height: height }}>
         <table ref={wordyArea}>
           <tbody>
             {blocks.map(({ component }) => component)}
