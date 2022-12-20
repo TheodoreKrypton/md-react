@@ -6,7 +6,7 @@ const Markdown = () => {
   const [blocks, setBlocks] = React.useState([]);
   const [height, setHeight] = React.useState(window.innerHeight / 2);
 
-  const [focusedBlock, setFocusedBlock] = React.useState({ block: null, cursor: null });
+  const [focusedBlock, setFocusedBlock] = React.useState({ block: null });
 
   const [setBlockInfoTable, getBlockInfo] = React.useMemo(() => {
     const blks = {};
@@ -50,7 +50,7 @@ const Markdown = () => {
           } else {
             const previousBlock = getBlockInfo(blocks[i - 1].id);
             res[i - 1] = makeNewBlock({ source: `${previousBlock.source}${getBlockInfo(blocks[i].id).source}` });
-            setFocusedBlock({ block: res[i - 1], cursor: previousBlock.source.length });
+            setFocusedBlock({ block: res[i - 1] });
           }
         } else {
           res.push(blocks[i])
@@ -74,7 +74,7 @@ const Markdown = () => {
       }
       return res;
     });
-    setFocusedBlock({ block: newBlocks[newBlocks.length - 1], cursor: 0 });
+    setFocusedBlock({ block: newBlocks[newBlocks.length - 1] });
   }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
 
   React.useEffect(() => {
@@ -87,8 +87,8 @@ const Markdown = () => {
     if (!focusedBlock.block) {
       return;
     }
-    const { block, cursor } = focusedBlock;
-    block.ref.current.dispatchEvent(new CustomEvent('edit', { detail: { cursor: cursor === undefined ? getBlockInfo(block.id).source.length : cursor } }));
+    const { block } = focusedBlock;
+    block.ref.current.dispatchEvent(new CustomEvent('edit', { detail: {} }));
   }, [focusedBlock, getBlockInfo])
 
   /*
@@ -112,63 +112,34 @@ const Markdown = () => {
   }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
 
   React.useEffect(() => {
-    editor.current.addEventListener('moveup', ({ detail: { id, cursor } }) => {
+    editor.current.addEventListener('moveup', ({ detail: { id } }) => {
       for (let i = 0; i < blocks.length; i++) {
         if (blocks[i].id === id) {
           if (i === 0) {
             continue;
           } else {
-            setFocusedBlock({ block: blocks[i - 1], cursor: Math.min(cursor, getBlockInfo(blocks[i - 1].id).source.length) });
+            setFocusedBlock({ block: blocks[i - 1] });
           }
         }
       }
     });
-    editor.current.addEventListener('movedown', ({ detail: { id, cursor } }) => {
+    editor.current.addEventListener('movedown', ({ detail: { id } }) => {
       for (let i = 0; i < blocks.length; i++) {
         if (blocks[i].id === id) {
           if (i === blocks.length - 1) {
             onClick();
           } else {
-            setFocusedBlock({ block: blocks[i + 1], cursor: Math.min(cursor, getBlockInfo(blocks[i + 1].id).source.length) });
+            setFocusedBlock({ block: blocks[i + 1] });
           }
         }
       }
-    });
-    editor.current.addEventListener('selectionBegin', ({ detail: { id, cursor } }) => {
-      selectionBegin.current = { id, cursor };
-    })
-    editor.current.addEventListener('selectionEnd', ({ detail: { id, cursor } }) => {
-      const begin = selectionBegin.current;
-
-      if (begin === null) {
-        return;
-      }
-      const end = { id, cursor };
-
-      (() => {
-        for (let i = 0; i < blocks.length; i++) {
-          if (blocks[i].id === begin.id) {
-            for (let j = i + 1; j < blocks.length; j++) {
-              if (blocks[j].id === end.id) {
-                return;
-              }
-            }
-            return;
-          }
-        }
-      })();
-
-      selectionBegin.current = null;
     });
 
     editor.current.addEventListener('click', onClick);
   }, [blocks, getBlockInfo, onClick, setFocusedBlock]);
 
-
-
   const editor = React.useRef(null);
   const wordyArea = React.useRef(null);
-  const selectionBegin = React.useRef(null);
 
   return (
     <>

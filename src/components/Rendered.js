@@ -19,9 +19,9 @@ const Editable = (props) => {
     onChange(newText);
 
     const analyzed = parse(newText);
+    console.log(analyzed);
     if (analyzed.length === 0) {
       setText("");
-
       return;
     }
 
@@ -52,7 +52,7 @@ const Editable = (props) => {
 }
 
 const Empty = () => {
-  return <br />
+  return <span contentEditable>&nbsp;</span>
 }
 
 const Node = (props) => {
@@ -89,6 +89,12 @@ const Node = (props) => {
 }
 
 const constructTree = (source) => {
+  if (source === "") {
+    const root = new NodeModel();
+    root.text = "";
+    return root;
+  }
+
   const items = parse(source);
 
   const createNode = (item) => {
@@ -136,7 +142,7 @@ class NodeModel {
 const Rendered = (props) => {
   const { source } = props;
 
-  const [model, setModel] = React.useState(source ? constructTree(source) : null);
+  const [model, setModel] = React.useState(constructTree(source));
   const [view, setView] = React.useState(null);
 
   const rerender = React.useCallback(() => {
@@ -144,11 +150,7 @@ const Rendered = (props) => {
   }, [model]);
 
   React.useEffect(() => {
-    if (model) {
-      setView(<Node model={model} rerender={rerender} />);
-    } else {
-      setView(<Empty />);
-    }
+    setView(<Node model={model} rerender={rerender} />);
   }, [model, rerender]);
 
   return <>{view}</>
