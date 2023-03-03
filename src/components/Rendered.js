@@ -46,7 +46,7 @@ const Editable = (props) => {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [children.type, onInput]);
+  }, [children.type, onInput, onBlur]);
 
   return element;
 }
@@ -65,8 +65,7 @@ const Node = (props) => {
       model.text = newText;
     }
 
-    const onBlur = (ev) => {
-      console.log("123");
+    const onBlur = () => {
       rerender();
     }
 
