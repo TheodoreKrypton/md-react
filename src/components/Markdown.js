@@ -1,95 +1,20 @@
 import React from 'react';
-import Block from './Block';
-import utils from '../utils';
+import BlocksManager from './BlocksManager';
+import BlockView from './BlockView';
+
+const bm = new BlocksManager();
 
 const Markdown = () => {
-  const [blocks, setBlocks] = React.useState([]);
   const [height, setHeight] = React.useState(window.innerHeight / 2);
+  const [blocks, setBlocks] = React.useState([]);
 
-  const [focusedBlock, setFocusedBlock] = React.useState({ block: null });
+  // const dispatchEvent = React.useCallback((event, args) => {
+  //   editor.current.dispatchEvent(new CustomEvent(event, { detail: args }));
+  // }, []);
 
-  const [setBlockInfoTable, getBlockInfo] = React.useMemo(() => {
-    const blks = {};
-    return [(k, v) => { blks[k] = v }, (k) => blks[k]];
+  const updateBlocks = React.useCallback(() => {
+    setBlocks(bm.map((block) => <BlockView block={block} key={block.id} />));
   }, []);
-
-  const dispatchEvent = React.useCallback((event, args) => {
-    editor.current.dispatchEvent(new CustomEvent(event, { detail: args }));
-  }, []);
-
-  const makeNewBlock = React.useCallback(({ source }) => {
-    const id = utils.autoId();
-    const block = {
-      component:
-        <Block
-          source={source}
-          key={id}
-          id={id}
-          getBlockInfo={getBlockInfo}
-          mergeBlocks={mergeBlocks}
-          breakLines={breakLines}
-          dispatchEvent={dispatchEvent}
-          setFocusedBlock={setFocusedBlock}
-          registerRef={(ref) => { block.ref = ref }}
-        />,
-      id,
-      ref: null,
-    };
-    setBlockInfoTable(id, { block, source });
-    return block;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const mergeBlocks = React.useCallback((key) => {
-    setBlocks((blocks) => {
-      const res = [];
-      for (let i = 0; i < blocks.length; i++) {
-        if (blocks[i].id === key) {
-          if (i === 0) {
-            continue
-          } else {
-            const previousBlock = getBlockInfo(blocks[i - 1].id);
-            res[i - 1] = makeNewBlock({ source: `${previousBlock.source}${getBlockInfo(blocks[i].id).source}` });
-            setFocusedBlock({ block: res[i - 1] });
-          }
-        } else {
-          res.push(blocks[i])
-        }
-      }
-      return res;
-    });
-  }, [getBlockInfo, makeNewBlock]);
-
-  const breakLines = React.useCallback((id) => {
-    const newLines = getBlockInfo(id).source.split('\n');
-    const newBlocks = newLines.map((line) => makeNewBlock({ source: line }));
-    setBlocks((blocks) => {
-      let res = [];
-      for (let i = 0; i < blocks.length; i++) {
-        if (blocks[i].id === id) {
-          res = [...res, ...newBlocks];
-        } else {
-          res.push(blocks[i]);
-        }
-      }
-      return res;
-    });
-    setFocusedBlock({ block: newBlocks[newBlocks.length - 1] });
-  }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
-
-  React.useEffect(() => {
-    const block = makeNewBlock({ source: '' });
-    setFocusedBlock({ block });
-    setBlocks([block]);
-  }, [makeNewBlock]);
-
-  React.useEffect(() => {
-    if (!focusedBlock.block) {
-      return;
-    }
-    const { block } = focusedBlock;
-    block.ref.current.dispatchEvent(new CustomEvent('edit', { detail: {} }));
-  }, [focusedBlock, getBlockInfo])
 
   /*
     Click on the empty area of the editor to create a new block when the last block is not empty.
@@ -98,45 +23,28 @@ const Markdown = () => {
     if (ev.target !== ev.currentTarget) {
       return;
     }
-    setBlocks(blocks => {
-      // If the last block is empty, focus on it.
-      if (blocks.length > 0 && getBlockInfo(blocks[blocks.length - 1].id).source.length === 0) {
-        setFocusedBlock({ block: blocks[blocks.length - 1] });
-        return blocks;
-      } else {
-        const block = makeNewBlock({ source: '' });
-        setFocusedBlock({ block });
-        return [...blocks, block];
-      }
-    });
-  }, [getBlockInfo, makeNewBlock, setFocusedBlock]);
+    if (bm.tail().source.length === 0) {
+      bm.tail().focus();
+    } else {
+      bm.insertBlockAfter(bm.tail().id);
+      updateBlocks();
+    }
+  }, [updateBlocks]);
 
   React.useEffect(() => {
     editor.current.addEventListener('moveup', ({ detail: { id } }) => {
-      for (let i = 0; i < blocks.length; i++) {
-        if (blocks[i].id === id) {
-          if (i === 0) {
-            continue;
-          } else {
-            setFocusedBlock({ block: blocks[i - 1] });
-          }
-        }
-      }
+      bm.getBlock(id).prev.focus();
     });
     editor.current.addEventListener('movedown', ({ detail: { id } }) => {
-      for (let i = 0; i < blocks.length; i++) {
-        if (blocks[i].id === id) {
-          if (i === blocks.length - 1) {
-            onClick();
-          } else {
-            setFocusedBlock({ block: blocks[i + 1] });
-          }
-        }
-      }
+      bm.getBlock(id).next.focus();
     });
 
     editor.current.addEventListener('click', onClick);
-  }, [blocks, getBlockInfo, onClick, setFocusedBlock]);
+  }, [onClick]);
+
+  React.useEffect(() => {
+    updateBlocks();
+  }, [updateBlocks]);
 
   const editor = React.useRef(null);
   const wordyArea = React.useRef(null);
@@ -146,7 +54,7 @@ const Markdown = () => {
       <div ref={editor} style={{ height: height }}>
         <table ref={wordyArea}>
           <tbody>
-            {blocks.map(({ component }) => component)}
+            {blocks}
           </tbody>
         </table>
       </div>
