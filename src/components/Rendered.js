@@ -4,7 +4,7 @@ import parse from '../parser'
 import './rendered.css';
 
 const Editable = (props) => {
-  const { children, onChange, onBlur } = props;
+  const { children, onChange, onBlur, model } = props;
 
   React.useEffect(() => {
     if (children.length !== undefined) {
@@ -13,6 +13,17 @@ const Editable = (props) => {
   }, [children]);
 
   const [text, setText] = React.useState(children.props.children);
+
+  const onKeyDown = React.useCallback((e) => {
+    const { anchorOffset: offset } = window.getSelection();
+    if (e.key === "ArrowLeft" && offset === 0) {
+      model.left().ref.current.focus();
+    } else if (e.key === "ArrowRight" && offset === e.currentTarget.textContent.length) {
+      console.log(model);
+      console.log(model.right());
+      model.right().ref.current.focus();
+    }
+  }, [model]);
 
   const onInput = React.useCallback((e) => {
     const newText = e.currentTarget.textContent;
@@ -36,17 +47,22 @@ const Editable = (props) => {
 
   }, [onChange]);
 
+  const inputRef = React.useRef();
+
   const element = React.useMemo(() => {
+    model.ref = inputRef;
     return React.createElement(children.type, {
       contentEditable: true,
+      ref: model.ref,
       onInput: onInput,
+      onKeyDown: onKeyDown,
       onBlur: onBlur,
       dangerouslySetInnerHTML: {
         __html: text
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [children.type, onInput, onBlur]);
+  }, [children.type, model, onInput, onBlur]);
 
   return element;
 }
@@ -70,9 +86,9 @@ const Node = (props) => {
     }
 
     if (model.type === 'text') {
-      setView(<Editable onChange={onChange} onBlur={onBlur}><span>{model.text}</span></Editable>)
+      setView(<Editable onChange={onChange} onBlur={onBlur} model={model}><span>{model.text}</span></Editable>)
     } else if (model.type === 'codespan') {
-      setView(<Editable onChange={onChange} onBlur={onBlur}><code>{model.text}</code></Editable>)
+      setView(<Editable onChange={onChange} onBlur={onBlur} model={model}><code>{model.text}</code></Editable>)
     } else {
       const children = model.children.map((child, i) => <Node model={child} key={i} rerender={rerender} />);
       if (model.type === 'heading') {
@@ -103,13 +119,23 @@ const constructTree = (source) => {
 
   const createNode = (item) => {
     const node = new NodeModel();
-    node.type = item.type
+    node.type = item.type;
+
+    const createFromArray = (array) => {
+      return array.map((item, i) => {
+        const child_node = createNode(item);
+        child_node.idx = i;
+        child_node.parent = node;
+        return child_node;
+      });
+    }
+
     if (item.type === "text") {
       node.text = item.text
     } else if (item.type === "list") {
-      node.children = item.items.map(createNode);
+      node.children = createFromArray(item.items);
     } else if (item.tokens) {
-      node.children = item.tokens.map(createNode);
+      node.children = createFromArray(item.tokens);
     } else {
       throw new Error(`unexpected item type ${item.type}`)
     }
@@ -125,7 +151,12 @@ class NodeModel {
   constructor() {
     this.type = ""
     this.text = "";
+
+    this.idx = 0;
     this.children = [];
+    this.parent = null;
+
+    this.ref = null;
   }
 
   source() {
@@ -146,6 +177,46 @@ class NodeModel {
     } else {
       return text
     }
+  }
+
+  setRef(ref) {
+    this.ref = ref;
+  }
+
+  left() {
+    if (!this.parent) {
+      return this;
+    }
+    if (this.idx === 0) {
+      return this.parent.left().rightest_leaf();
+    } else {
+      return this.parent.children[this.idx - 1].rightest_leaf();
+    }
+  }
+
+  leftest_leaf() {
+    if (this.children.length === 0) {
+      return this;
+    }
+    return this.children[0].leftest_leaf();
+  }
+
+  right() {
+    if (!this.parent) {
+      return this;
+    }
+    if (this.idx === this.parent.children.length - 1) {
+      return this.parent.right().leftest_leaf();
+    } else {
+      return this.parent.children[this.idx + 1].leftest_leaf();
+    }
+  }
+
+  rightest_leaf() {
+    if (this.children.length === 0) {
+      return this;
+    }
+    return this.children[this.children.length - 1].rightest_leaf();
   }
 }
 
