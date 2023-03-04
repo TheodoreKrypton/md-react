@@ -16,7 +16,8 @@ const Editable = (props) => {
 
   const onKeyDown = React.useCallback((e) => {
     const { anchorOffset: offset } = window.getSelection();
-    if (e.key === "ArrowLeft" && offset === 0) {
+
+    const moveLeft = () => {
       const prev = model.left();
       if (!prev) {
         return;
@@ -25,16 +26,24 @@ const Editable = (props) => {
       const selection = window.getSelection();
       const range = document.createRange();
       selection.removeAllRanges();
-      range.selectNodeContents(elem);
+      range.setStart(elem.childNodes[0], elem.textContent.length);
       range.collapse(false);
       selection.addRange(range);
       elem.focus();
+    }
+
+    if (e.key === "ArrowLeft" && offset === 0) {
+      moveLeft();
     } else if (e.key === "ArrowRight" && offset === e.currentTarget.textContent.length) {
       const next = model.right();
       if (!next) {
         return;
       }
       next.ref.current.focus();
+    } else if (e.key === "Backspace" && offset === 0) {
+      moveLeft();
+    } else {
+      // console.log(e.key);
     }
   }, [model]);
 
@@ -89,35 +98,39 @@ const Node = (props) => {
   const [view, setView] = React.useState(null);
 
   React.useEffect(() => {
-    const onChange = (newText) => {
-      model.text = newText;
-    }
-
-    const onBlur = () => {
-      rerender();
-    }
-
-    if (model.type === 'text') {
-      setView(<Editable onChange={onChange} onBlur={onBlur} model={model}><span>{model.text}</span></Editable>)
-    } else if (model.type === 'codespan') {
-      setView(<Editable onChange={onChange} onBlur={onBlur} model={model}><code>{model.text}</code></Editable>)
-    } else {
-      const children = model.children.map((child, i) => <Node model={child} key={i} rerender={rerender} />);
-      if (model.type === 'heading') {
-        setView(<h1>{children}</h1>)
-      } else if (model.type === 'list_item') {
-        setView(<li>{children}</li>)
-      } else if (model.type === 'strong') {
-        setView(<strong>{children}</strong>)
-      } else if (model.type === 'em') {
-        setView(<em>{children}</em>)
-      } else {
-        setView(<>{children}</>)
-      }
-    }
-  }, [model, rerender]);
+    setView(renderView(model, rerender));
+  }, [rerender, model]);
 
   return <>{view}</>
+}
+
+const renderView = (model, rerender) => {
+  const onChange = (newText) => {
+    model.text = newText;
+  }
+
+  const onBlur = () => {
+    rerender();
+  }
+
+  if (model.children.length > 0) {
+    const children = model.children.map((child, i) => <Node model={child} key={i} rerender={rerender} />);
+    if (model.type === 'heading') {
+      return <h1>{children}</h1>;
+    } else if (model.type === 'list_item') {
+      return <li>{children}</li>;
+    } else if (model.type === 'strong') {
+      return <strong>{children}</strong>;
+    } else if (model.type === 'em') {
+      return <em>{children}</em>;
+    } else {
+      return <>{children}</>;
+    }
+  } else if (model.type === 'text') {
+    return <Editable onChange={onChange} onBlur={onBlur} model={model}><span>{model.text}</span></Editable>;
+  } else if (model.type === 'codespan') {
+    return <Editable onChange={onChange} onBlur={onBlur} model={model}><code>{model.text}</code></Editable>;
+  }
 }
 
 const constructTree = (source) => {
@@ -142,12 +155,12 @@ const constructTree = (source) => {
       });
     }
 
-    if (item.type === "text") {
-      node.text = item.text
-    } else if (item.type === "list") {
+    if (item.items) {
       node.children = createFromArray(item.items);
     } else if (item.tokens) {
       node.children = createFromArray(item.tokens);
+    } else if (item.type === "text") {
+      node.text = item.text
     } else {
       throw new Error(`unexpected item type ${item.type}`)
     }
@@ -189,10 +202,6 @@ class NodeModel {
     } else {
       return text
     }
-  }
-
-  setRef(ref) {
-    this.ref = ref;
   }
 
   left() {
