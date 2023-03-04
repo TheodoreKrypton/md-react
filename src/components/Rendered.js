@@ -17,11 +17,24 @@ const Editable = (props) => {
   const onKeyDown = React.useCallback((e) => {
     const { anchorOffset: offset } = window.getSelection();
     if (e.key === "ArrowLeft" && offset === 0) {
-      model.left().ref.current.focus();
+      const prev = model.left();
+      if (!prev) {
+        return;
+      }
+      const elem = prev.ref.current;
+      const selection = window.getSelection();
+      const range = document.createRange();
+      selection.removeAllRanges();
+      range.selectNodeContents(elem);
+      range.collapse(false);
+      selection.addRange(range);
+      elem.focus();
     } else if (e.key === "ArrowRight" && offset === e.currentTarget.textContent.length) {
-      console.log(model);
-      console.log(model.right());
-      model.right().ref.current.focus();
+      const next = model.right();
+      if (!next) {
+        return;
+      }
+      next.ref.current.focus();
     }
   }, [model]);
 
@@ -44,7 +57,6 @@ const Editable = (props) => {
       setText(newText);
       return;
     }
-
   }, [onChange]);
 
   const inputRef = React.useRef();
@@ -185,13 +197,11 @@ class NodeModel {
 
   left() {
     if (!this.parent) {
-      return this;
+      return null;
     }
-    if (this.idx === 0) {
-      return this.parent.left().rightest_leaf();
-    } else {
-      return this.parent.children[this.idx - 1].rightest_leaf();
-    }
+    const left = this.idx === 0 ?
+      this.parent.left() : this.parent.children[this.idx - 1].rightest_leaf();
+    return left && left.rightest_leaf();
   }
 
   leftest_leaf() {
@@ -203,13 +213,11 @@ class NodeModel {
 
   right() {
     if (!this.parent) {
-      return this;
+      return null;
     }
-    if (this.idx === this.parent.children.length - 1) {
-      return this.parent.right().leftest_leaf();
-    } else {
-      return this.parent.children[this.idx + 1].leftest_leaf();
-    }
+    const right = this.idx === this.parent.children.length - 1 ?
+      this.parent.right() : this.parent.children[this.idx + 1];
+    return right && right.leftest_leaf();
   }
 
   rightest_leaf() {
